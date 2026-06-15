@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import Scene3D from '@/components/Scene3D.vue'
 import StatsBar from '@/components/StatsBar.vue'
 import InfoPanel from '@/components/InfoPanel.vue'
@@ -48,26 +48,48 @@ function handleStop(potId: string) {
   store.stopSpray(potId)
 }
 
-function handleWSMessage(msg: WSMessage) {
-  if (msg.type === 'moisture_update' && Array.isArray(msg.data)) {
-    for (const item of msg.data as { id: string; moisture: number; status: string }[]) {
-      store.updatePotFromWS(item.id, item.moisture, item.status)
+function handleWSBatch(messages: WSMessage[]) {
+  const moistureUpdates: Array<{ id: string; moisture: number; status: string }> = []
+  const sprayUpdates: Array<{ potId: string; status: string; action: string }> = []
+  let hasAlert = false
+  let selectedPotUpdated = false
+
+  for (const msg of messages) {
+    if (msg.type === 'moisture_update' && Array.isArray(msg.data)) {
+      for (const item of msg.data as { id: string; moisture: number; status: string }[]) {
+        moistureUpdates.push(item)
+        if (item.id === store.state.selectedPotId) {
+          selectedPotUpdated = true
+        }
+      }
+    } else if (msg.type === 'spray_status' && msg.data) {
+      const data = msg.data as { potId: string; status: string; action: string }
+      sprayUpdates.push(data)
+      if (data.potId === store.state.selectedPotId) {
+        selectedPotUpdated = true
+      }
+    } else if (msg.type === 'alert' && msg.data) {
+      hasAlert = true
     }
-  } else if (msg.type === 'spray_status' && msg.data) {
-    const data = msg.data as { potId: string; status: string; action: string }
-    store.setSprayStatus(data.potId, data.status, data.action)
-    if (store.state.selectedPotId === data.potId) {
-      store.fetchPotDetail(data.potId)
-      store.fetchHistory(data.potId)
-    }
-  } else if (msg.type === 'alert' && msg.data) {
+  }
+
+  if (moistureUpdates.length > 0) {
+    store.batchUpdateFromWS(moistureUpdates)
+  }
+  if (sprayUpdates.length > 0) {
+    store.batchUpdateSprayStatus(sprayUpdates)
+  }
+  if (hasAlert) {
     store.fetchAlerts()
+  }
+  if (selectedPotUpdated && store.state.selectedPotId) {
+    store.fetchHistory(store.state.selectedPotId)
   }
 }
 
 onMounted(() => {
   store.fetchPots()
-  ws.onMessage(handleWSMessage)
+  ws.onBatchMessage(handleWSBatch)
   ws.connect()
 })
 </script>

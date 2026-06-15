@@ -1,10 +1,10 @@
-import type WebSocket from 'ws'
+import { WebSocket, WebSocketServer } from 'ws'
 
 class WSService {
-  private wss: WebSocket.Server | null = null
+  private wss: WebSocketServer | null = null
   private clients: Set<WebSocket> = new Set()
 
-  setup(wss: WebSocket.Server) {
+  setup(wss: WebSocketServer) {
     this.wss = wss
     wss.on('connection', (ws: WebSocket) => {
       this.clients.add(ws)

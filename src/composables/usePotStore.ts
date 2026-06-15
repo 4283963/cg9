@@ -206,6 +206,27 @@ function updatePotFromWS(potId: string, moisture: number, status: string) {
   }
 }
 
+function batchUpdateFromWS(updates: Array<{ id: string; moisture: number; status: string }>) {
+  for (const u of updates) {
+    const pot = state.pots.get(u.id)
+    if (pot) {
+      pot.currentMoisture = u.moisture
+      if (u.status === 'normal' || u.status === 'warning' || u.status === 'spraying') {
+        pot.status = u.status
+      }
+    }
+  }
+}
+
+function batchUpdateSprayStatus(updates: Array<{ potId: string; status: string; action: string }>) {
+  for (const u of updates) {
+    const pot = state.pots.get(u.potId)
+    if (pot && (u.status === 'normal' || u.status === 'warning' || u.status === 'spraying')) {
+      pot.status = u.status
+    }
+  }
+}
+
 function setSprayStatus(potId: string, status: string, _action: string) {
   const pot = state.pots.get(potId)
   if (pot && (status === 'normal' || status === 'warning' || status === 'spraying')) {
@@ -235,6 +256,8 @@ export function usePotStore() {
     fetchThresholds,
     updateThresholds,
     updatePotFromWS,
+    batchUpdateFromWS,
+    batchUpdateSprayStatus,
     setSprayStatus,
     addAlert,
   }

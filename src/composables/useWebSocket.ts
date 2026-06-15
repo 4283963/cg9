@@ -5,7 +5,7 @@ export interface WSMessage {
   data?: unknown
 }
 
-type MessageHandler = (msg: WSMessage) => void
+type MessageHandler = (batch: WSMessage[]) => void
 
 const connected = ref(false)
 const lastMessage = ref<WSMessage | null>(null)
@@ -14,6 +14,33 @@ let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let handlers: MessageHandler[] = []
 let shouldReconnect = true
+
+let messageQueue: WSMessage[] = []
+let rafId: number | null = null
+let flushPending = false
+
+function flushQueue() {
+  rafId = null
+  flushPending = false
+
+  if (messageQueue.length === 0) return
+
+  const batch = messageQueue
+  messageQueue = []
+
+  for (const handler of handlers) {
+    try {
+      handler(batch)
+    } catch {
+    }
+  }
+}
+
+function scheduleFlush() {
+  if (flushPending) return
+  flushPending = true
+  rafId = requestAnimationFrame(flushQueue)
+}
 
 function connect(url?: string) {
   const wsUrl = url || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.hostname}:3001`
@@ -41,10 +68,10 @@ function connect(url?: string) {
     try {
       const msg: WSMessage = JSON.parse(event.data)
       lastMessage.value = msg
-      for (const handler of handlers) {
-        handler(msg)
-      }
-    } catch {}
+      messageQueue.push(msg)
+      scheduleFlush()
+    } catch {
+    }
   }
 }
 
@@ -54,6 +81,12 @@ function disconnect() {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  flushPending = false
+  messageQueue = []
   if (ws) {
     ws.onclose = null
     ws.close()
@@ -68,7 +101,7 @@ function send(msg: unknown) {
   }
 }
 
-function onMessage(handler: MessageHandler) {
+function onBatchMessage(handler: MessageHandler) {
   handlers.push(handler)
   return () => {
     handlers = handlers.filter((h) => h !== handler)
@@ -86,6 +119,6 @@ export function useWebSocket() {
     connect,
     disconnect,
     send,
-    onMessage,
+    onBatchMessage,
   }
 }

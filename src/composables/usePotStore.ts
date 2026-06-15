@@ -41,13 +41,28 @@ export interface ThresholdConfig {
   upperBound: number
 }
 
+export interface GravityConfig {
+  enabled: boolean
+  dampingFactors: number[]
+}
+
+interface GravitySprayInfo {
+  potId: string
+  dampingFactor: number
+  adjustedDuration: number
+  originalDuration: number
+  triggerSource: string
+}
+
 interface PotStoreState {
   pots: Map<string, Pot>
   selectedPotId: string | null
   alerts: Alert[]
   logs: OperationLog[]
   thresholds: ThresholdConfig
+  gravityConfig: GravityConfig
   history: MoistureReading[]
+  gravitySprayInfos: Map<string, GravitySprayInfo>
 }
 
 const state = reactive<PotStoreState>({
@@ -56,7 +71,9 @@ const state = reactive<PotStoreState>({
   alerts: [],
   logs: [],
   thresholds: { lowerBound: 40, upperBound: 70 },
+  gravityConfig: { enabled: false, dampingFactors: [0, 0.2, 0.4] },
   history: [],
+  gravitySprayInfos: new Map(),
 })
 
 const selectedPot = computed(() => {
@@ -133,7 +150,23 @@ async function triggerSpray(id: string, duration = 3000) {
     })
     const json = await res.json()
     if (json.success && json.data) {
-      state.pots.set(id, json.data)
+      if (json.data.primary) {
+        state.pots.set(json.data.primary.id, json.data.primary)
+      }
+      if (Array.isArray(json.data.triggeredPots)) {
+        for (const t of json.data.triggeredPots) {
+          if (!t.isOriginal) {
+            state.gravitySprayInfos.set(t.potId, {
+              potId: t.potId,
+              dampingFactor: t.dampingFactor,
+              adjustedDuration: t.duration,
+              originalDuration: duration,
+              triggerSource: id,
+            })
+          }
+        }
+      }
+      await fetchPots()
     }
   } catch {}
 }
@@ -147,6 +180,7 @@ async function stopSpray(id: string) {
     const json = await res.json()
     if (json.success && json.data) {
       state.pots.set(id, json.data)
+      state.gravitySprayInfos.delete(id)
     }
   } catch {}
 }
@@ -238,6 +272,52 @@ function addAlert(alert: Alert) {
   state.alerts.unshift(alert)
 }
 
+async function fetchGravityConfig() {
+  try {
+    const res = await fetch('/api/config/gravity')
+    const json = await res.json()
+    if (json.success && json.data) {
+      state.gravityConfig = json.data
+    }
+  } catch {}
+}
+
+async function setGravityEnabled(enabled: boolean) {
+  try {
+    const res = await fetch('/api/config/gravity/enabled', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    const json = await res.json()
+    if (json.success && json.data) {
+      state.gravityConfig = json.data
+    }
+  } catch {}
+}
+
+async function setGravityFactors(factors: number[]) {
+  try {
+    const res = await fetch('/api/config/gravity/factors', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ factors }),
+    })
+    const json = await res.json()
+    if (json.success && json.data) {
+      state.gravityConfig = json.data
+    }
+  } catch {}
+}
+
+function setGravitySprayInfo(potId: string, info: GravitySprayInfo) {
+  state.gravitySprayInfos.set(potId, info)
+}
+
+function clearGravitySprayInfo(potId: string) {
+  state.gravitySprayInfos.delete(potId)
+}
+
 export function usePotStore() {
   return {
     state,
@@ -255,6 +335,11 @@ export function usePotStore() {
     fetchLogs,
     fetchThresholds,
     updateThresholds,
+    fetchGravityConfig,
+    setGravityEnabled,
+    setGravityFactors,
+    setGravitySprayInfo,
+    clearGravitySprayInfo,
     updatePotFromWS,
     batchUpdateFromWS,
     batchUpdateSprayStatus,

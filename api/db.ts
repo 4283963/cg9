@@ -39,12 +39,21 @@ interface ThresholdConfig {
   upperBound: number
 }
 
+interface GravityConfig {
+  enabled: boolean
+  dampingFactors: number[]
+}
+
 class Database {
   pots: Map<string, Pot> = new Map()
   moistureReadings: MoistureReading[] = []
   operationLogs: OperationLog[] = []
   alerts: Alert[] = []
   thresholdConfig: ThresholdConfig = { lowerBound: 40, upperBound: 70 }
+  gravityConfig: GravityConfig = {
+    enabled: false,
+    dampingFactors: [0, 0.2, 0.4],
+  }
   private logCounter = 0
   private alertCounter = 0
 
@@ -158,6 +167,39 @@ class Database {
       }
     }
     return this.getThresholds()
+  }
+
+  getGravityConfig(): GravityConfig {
+    return { ...this.gravityConfig }
+  }
+
+  setGravityEnabled(enabled: boolean): GravityConfig {
+    this.gravityConfig.enabled = enabled
+    return this.getGravityConfig()
+  }
+
+  setGravityDampingFactors(factors: number[]): GravityConfig {
+    this.gravityConfig.dampingFactors = [...factors]
+    return this.getGravityConfig()
+  }
+
+  getVerticalNeighbors(row: number, col: number, levels = 2): string[] {
+    const neighbors: string[] = []
+    for (let i = 1; i <= levels; i++) {
+      const neighborRow = row + i
+      if (neighborRow <= 8) {
+        neighbors.push(`R${neighborRow}C${col}`)
+      }
+    }
+    return neighbors
+  }
+
+  getDampingFactor(row: number, triggerRow: number): number {
+    const rowDiff = row - triggerRow
+    if (rowDiff < 0 || rowDiff >= this.gravityConfig.dampingFactors.length) {
+      return 0
+    }
+    return this.gravityConfig.dampingFactors[rowDiff]
   }
 }
 

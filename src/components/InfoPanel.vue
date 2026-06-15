@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import * as echarts from 'echarts'
 import type { Pot, MoistureReading } from '@/composables/usePotStore'
+import { usePotStore } from '@/composables/usePotStore'
 
 const props = defineProps<{
   pot: Pot | null
@@ -13,8 +14,19 @@ const emit = defineEmits<{
   stop: [potId: string]
 }>()
 
+const store = usePotStore()
+
 const chartRef = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
+
+const gravityInfo = computed(() => {
+  if (!props.pot) return null
+  return store.state.gravitySprayInfos.get(props.pot.id) ?? null
+})
+
+const showGravityHint = computed(() => {
+  return props.pot && props.pot.row === 1 && store.state.gravityConfig.enabled
+})
 
 function statusBadgeClass(status: string) {
   switch (status) {
@@ -139,6 +151,77 @@ onUnmounted(() => {
             <div class="text-[#9E9E9E]">喷淋次数</div>
             <div class="text-[#E0E0E0]">{{ pot.sprayCount }}</div>
           </div>
+        </div>
+      </div>
+
+      <div
+        v-if="gravityInfo"
+        class="mx-5 mt-4 mb-0 px-4 py-3 rounded-lg bg-[#1565C0]/15 border border-[#1565C0]/40"
+      >
+        <div class="flex items-center gap-2 mb-2">
+          <svg
+            class="w-4 h-4 text-[#4FC3F7]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+          <span class="text-sm font-bold text-[#4FC3F7]">重力协同触发</span>
+        </div>
+        <div class="text-xs space-y-1.5">
+          <div class="flex justify-between">
+            <span class="text-[#78909C]">触发源花盆</span>
+            <span class="text-[#E0E0E0] font-mono">{{ gravityInfo.triggerSource }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#78909C]">高度阻尼系数</span>
+            <span class="text-[#4FC3F7] font-bold">-{{ Math.round(gravityInfo.dampingFactor * 100) }}%</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#78909C]">原喷淋时间</span>
+            <span class="text-[#9E9E9E] line-through">{{ (gravityInfo.originalDuration / 1000).toFixed(1) }}s</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-[#78909C]">调整后时间</span>
+            <span class="text-[#4FC3F7] font-bold text-sm">{{ (gravityInfo.adjustedDuration / 1000).toFixed(1) }}s</span>
+          </div>
+          <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-[#1565C0]/30">
+            <svg class="w-3.5 h-3.5 text-[#FFB300]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span class="text-[11px] text-[#FFB300]/80">上游喷淋，本盆自动减少喷淋时间防止淹死</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="showGravityHint && !gravityInfo"
+        class="mx-5 mt-4 mb-0 px-4 py-3 rounded-lg bg-[#00C853]/10 border border-[#00C853]/30"
+      >
+        <div class="flex items-center gap-2 mb-1.5">
+          <svg
+            class="w-4 h-4 text-[#00C853]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22,4 12,14.01 9,11.01" />
+          </svg>
+          <span class="text-sm font-bold text-[#00C853]">重力协同模式已启用</span>
+        </div>
+        <div class="text-[11px] text-[#9E9E9E] leading-relaxed">
+          触发本盆喷淋时，正下方第2、3排花盆将自动开启喷淋，时间分别削减
+          <span class="text-[#00C853] font-medium">20%</span>
+          和
+          <span class="text-[#00C853] font-medium">40%</span>
         </div>
       </div>
 
